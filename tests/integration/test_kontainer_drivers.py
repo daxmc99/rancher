@@ -2,6 +2,7 @@ import platform
 import pytest
 import sys
 from rancher import ApiError
+import time
 
 from .conftest import wait_for_condition, wait_until, random_str, wait_for
 
@@ -9,17 +10,17 @@ NEW_DRIVER_URL = "https://github.com/rancher/kontainer-engine-driver-" \
                  "example/releases/download/v0.2.2/kontainer-engine-" \
                  "driver-example-" + sys.platform + "-amd64"
 NEW_DRIVER_ARM64_URL = "https://github.com/rancher/kontainer-engine-driver-" \
-                 "example/releases/download/v0.2.2/kontainer-engine-" \
-                 "driver-example-" + sys.platform + "-arm64"
+                       "example/releases/download/v0.2.2/kontainer-engine-" \
+                       "driver-example-" + sys.platform + "-arm64"
 DRIVER_AMD64_URL = "https://github.com/rancher/" \
-             "kontainer-engine-driver-example/" \
-             "releases/download/v0.2.1/kontainer-engine-driver-example-" \
-             + sys.platform
+                   "kontainer-engine-driver-example/" \
+                   "releases/download/v0.2.1/kontainer-engine-driver-example-" \
+                   + sys.platform
 DRIVER_ARM64_URL = "https://github.com/jianghang8421/" \
-             "kontainer-engine-driver-example/" \
-             "releases/download/v0.2.1-multiarch/" \
-             "kontainer-engine-driver-example-" \
-             + sys.platform + "-arm64"
+                   "kontainer-engine-driver-example/" \
+                   "releases/download/v0.2.1-multiarch/" \
+                   "kontainer-engine-driver-example-" \
+                   + sys.platform + "-arm64"
 
 
 def test_builtin_drivers_are_present(admin_mc):
@@ -58,7 +59,7 @@ def test_kontainer_driver_lifecycle(admin_mc, remove_resource,
         active=True,
         url=URL
     )
-    remove_resource(kd)
+    wait_remove_resource(kd)
 
     # Test that it is in downloading state while downloading
     kd = wait_for_condition('Downloaded', 'Unknown', admin_mc.client, kd)
@@ -92,6 +93,15 @@ def test_kontainer_driver_lifecycle(admin_mc, remove_resource,
         })
     remove_resource(cluster)
 
+    # check if server is done with init
+    def cluster_steady_state(clus):
+        clus = admin_mc.client.reload(clus)
+        if "lifecycle.cattle.io/" \
+           "create.mgmt-cluster-rbac-remove" in clus.annotations:
+            return True
+        return False
+    # this typically takes at least 45 seconds
+    wait_for(lambda: cluster_steady_state(cluster), timeout=90)
     # verify delete link has been removed from the driver
     def check_remove_link(kod):
         kod = admin_mc.client.reload(kod)
@@ -109,7 +119,7 @@ def test_kontainer_driver_lifecycle(admin_mc, remove_resource,
     # within rancher since this cluster is not a "true" cluster
     admin_mc.client.delete(cluster)
     # wait for removal link to return
-    wait_for(lambda: not (check_remove_link(kd)))
+    wait_for(lambda: not (check_remove_link(kd)), timeout=90)
     admin_mc.client.delete(kd)
     # test driver is removed from schema after deletion
     verify_driver_not_in_types(admin_mc.client, kd)

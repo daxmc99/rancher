@@ -316,7 +316,10 @@ def wait_remove_resource(admin_mc, request, timeout=DEFAULT_TIMEOUT):
 
     def _cleanup(resource):
         def clean():
-            client.delete(resource)
+            try:
+                client.delete(resource)
+            except ApiError as e:
+                pass
             wait_until(lambda: client.reload(resource) is None)
         request.addfinalizer(clean)
     return _cleanup
