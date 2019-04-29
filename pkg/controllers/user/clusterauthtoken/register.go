@@ -39,16 +39,15 @@ func Register(ctx context.Context, cluster *config.UserContext) {
 
 	cluster.Management.Management.Settings("").AddClusterScopedLifecycle(ctx, "cat-setting-controller",
 		clusterName,
-		&SettingHandler{
+		&settingHandler{
 			namespace,
 			clusterConfigMap,
 			clusterConfigMapLister,
 		})
 	cluster.Management.Management.Tokens("").AddClusterScopedLifecycle(ctx, "cat-token-controller",
 		clusterName,
-		&TokenHandler{
+		&tokenHandler{
 			namespace,
-			clusterName,
 			clusterAuthToken,
 			clusterAuthTokenLister,
 			clusterUserAttribute,
@@ -59,17 +58,18 @@ func Register(ctx context.Context, cluster *config.UserContext) {
 		})
 	cluster.Management.Management.Users("").AddClusterScopedLifecycle(ctx, "cat-user-controller",
 		clusterName,
-		&UserHandler{
+		&userHandler{
 			namespace,
 			clusterUserAttribute,
 			clusterUserAttributeLister,
 		})
 
-	cluster.Management.Management.UserAttributes("").AddHandler(ctx, "cat-user-attribute-controller", (&UserAttributeHandler{
-		namespace,
-		clusterUserAttribute,
-		clusterUserAttributeLister,
-	}).Sync)
+	cluster.Management.Management.UserAttributes("").AddHandler(ctx, "cat-user-attribute-controller",
+		(&userAttributeHandler{
+			namespace,
+			clusterUserAttribute,
+			clusterUserAttributeLister,
+		}).Sync)
 
 	cluster.Cluster.ClusterUserAttributes(namespace).AddHandler(ctx, "cat-cluster-user-attribute-controller", (&ClusterUserAttributeHandler{
 		userAttribute,

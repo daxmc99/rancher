@@ -17,13 +17,13 @@ type userAttributeCompare struct {
 	enabled      bool
 }
 
-type UserAttributeHandler struct {
+type userAttributeHandler struct {
 	namespace                  string
 	clusterUserAttribute       clusterv3.ClusterUserAttributeInterface
 	clusterUserAttributeLister clusterv3.ClusterUserAttributeLister
 }
 
-func (h *UserAttributeHandler) Sync(key string, userAttribute *managementv3.UserAttribute) (runtime.Object, error) {
+func (h *userAttributeHandler) Sync(key string, userAttribute *managementv3.UserAttribute) (runtime.Object, error) {
 	if userAttribute == nil || userAttribute.DeletionTimestamp != nil {
 		return nil, nil
 	}
@@ -49,7 +49,7 @@ func (h *UserAttributeHandler) Sync(key string, userAttribute *managementv3.User
 }
 
 func compareUserAttributeClusterUserAttribute(userAttribute managementv3.UserAttribute, clusterUserAttribute clusterv3.ClusterUserAttribute) ([]string, bool) {
-	groups := []string{}
+	var groups []string
 	for _, gp := range userAttribute.GroupPrincipals {
 		for i := range gp.Items {
 			groups = append(groups, gp.Items[i].Name)
@@ -57,15 +57,15 @@ func compareUserAttributeClusterUserAttribute(userAttribute managementv3.UserAtt
 	}
 	sort.Strings(groups)
 
-	new := userAttributeCompare{
+	newAttribute := userAttributeCompare{
 		groups:       groups,
 		lastRefresh:  userAttribute.LastRefresh,
 		needsRefresh: userAttribute.NeedsRefresh,
 	}
-	old := userAttributeCompare{
+	oldAttribute := userAttributeCompare{
 		groups:       clusterUserAttribute.Groups,
 		lastRefresh:  clusterUserAttribute.LastRefresh,
 		needsRefresh: clusterUserAttribute.NeedsRefresh,
 	}
-	return groups, reflect.DeepEqual(new, old)
+	return groups, reflect.DeepEqual(newAttribute, oldAttribute)
 }

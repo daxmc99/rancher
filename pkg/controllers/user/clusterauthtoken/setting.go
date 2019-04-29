@@ -10,13 +10,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-type SettingHandler struct {
+type settingHandler struct {
 	namespace              string
 	clusterConfigMap       corev1.ConfigMapInterface
 	clusterConfigMapLister corev1.ConfigMapLister
 }
 
-func (h *SettingHandler) Create(setting *managementv3.Setting) (runtime.Object, error) {
+func (h *settingHandler) Create(setting *managementv3.Setting) (runtime.Object, error) {
 	if setting.Name != common.AuthProviderRefreshDebounceSettingName {
 		return nil, nil
 	}
@@ -41,7 +41,7 @@ func (h *SettingHandler) Create(setting *managementv3.Setting) (runtime.Object, 
 	return nil, err
 }
 
-func (h *SettingHandler) Updated(setting *managementv3.Setting) (runtime.Object, error) {
+func (h *settingHandler) Updated(setting *managementv3.Setting) (runtime.Object, error) {
 	if setting.Name != common.AuthProviderRefreshDebounceSettingName {
 		return nil, nil
 	}
@@ -64,7 +64,7 @@ func (h *SettingHandler) Updated(setting *managementv3.Setting) (runtime.Object,
 	return nil, err
 }
 
-func (h *SettingHandler) Remove(setting *managementv3.Setting) (runtime.Object, error) {
+func (h *settingHandler) Remove(setting *managementv3.Setting) (runtime.Object, error) {
 	if setting.Name != common.AuthProviderRefreshDebounceSettingName {
 		return nil, nil
 	}

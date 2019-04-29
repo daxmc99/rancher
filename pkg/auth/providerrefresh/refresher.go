@@ -126,7 +126,7 @@ func (r *refresher) triggerUserRefresh(userName string, force bool) {
 
 	attribs.NeedsRefresh = true
 	if needCreate {
-		_, err := r.userAttributes.Create(attribs)
+		_, err = r.userAttributes.Create(attribs)
 		if err != nil {
 			logrus.Errorf("Error creating user attribute to trigger refresh: %v", err)
 		}
@@ -196,7 +196,7 @@ func (r *refresher) refreshAttributes(attribs *v3.UserAttribute) (*v3.UserAttrib
 				break
 			}
 		}
-		newGroupPrincipals := []v3.Principal{}
+		var newGroupPrincipals []v3.Principal
 
 		// If there is no principalID for the provider, there is no reason to go through the refetch process
 		if principalID != "" {
@@ -248,9 +248,9 @@ func (r *refresher) refreshAttributes(attribs *v3.UserAttribute) (*v3.UserAttrib
 
 		if principalID != "" {
 			// We want to verify that the user still has rancher access
-			canStillAccess, err := providers.CanAccessWithGroupProviders(providerName, principalID, newGroupPrincipals)
-			if err != nil {
-				return nil, err
+			canStillAccess, err2 := providers.CanAccessWithGroupProviders(providerName, principalID, newGroupPrincipals)
+			if err2 != nil {
+				return nil, err2
 			}
 
 			if canStillAccess {
@@ -262,7 +262,7 @@ func (r *refresher) refreshAttributes(attribs *v3.UserAttribute) (*v3.UserAttrib
 		// If the user doesn't have access through this provider, we want to remove their login tokens for this provider
 		if !canAccessProvider {
 			for _, token := range loginTokens[providerName] {
-				err := r.tokens.Delete(token.Name, &metav1.DeleteOptions{})
+				err = r.tokens.Delete(token.Name, &metav1.DeleteOptions{})
 				if err != nil {
 					if apierrors.IsNotFound(err) {
 						continue
@@ -280,7 +280,7 @@ func (r *refresher) refreshAttributes(attribs *v3.UserAttribute) (*v3.UserAttrib
 
 	for _, token := range derivedTokens {
 		token.Enabled = falsePointer
-		_, err := r.tokenMGR.UpdateToken(token)
+		_, err = r.tokenMGR.UpdateToken(token)
 		if err != nil {
 			return nil, err
 		}

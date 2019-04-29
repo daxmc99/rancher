@@ -20,9 +20,8 @@ type tokenAttributeCompare struct {
 	enabled   bool
 }
 
-type TokenHandler struct {
+type tokenHandler struct {
 	namespace                  string
-	clusterName                string
 	clusterAuthToken           clusterv3.ClusterAuthTokenInterface
 	clusterAuthTokenLister     clusterv3.ClusterAuthTokenLister
 	clusterUserAttribute       clusterv3.ClusterUserAttributeInterface
@@ -32,10 +31,7 @@ type TokenHandler struct {
 	userAttributeLister        managementv3.UserAttributeLister
 }
 
-func (h *TokenHandler) Create(token *managementv3.Token) (runtime.Object, error) {
-	if token.ClusterName != h.clusterName {
-		return nil, nil
-	}
+func (h *tokenHandler) Create(token *managementv3.Token) (runtime.Object, error) {
 
 	_, err := h.clusterAuthTokenLister.Get(h.namespace, token.Name)
 	if !errors.IsNotFound(err) {
@@ -56,10 +52,7 @@ func (h *TokenHandler) Create(token *managementv3.Token) (runtime.Object, error)
 	return nil, err
 }
 
-func (h *TokenHandler) Updated(token *managementv3.Token) (runtime.Object, error) {
-	if token.ClusterName != h.clusterName {
-		return nil, nil
-	}
+func (h *tokenHandler) Updated(token *managementv3.Token) (runtime.Object, error) {
 
 	clusterAuthToken, err := h.clusterAuthTokenLister.Get(h.namespace, token.Name)
 	if errors.IsNotFound(err) {
@@ -75,17 +68,17 @@ func (h *TokenHandler) Updated(token *managementv3.Token) (runtime.Object, error
 	}
 
 	tokenEnabled := token.Enabled == nil || *token.Enabled
-	new := tokenAttributeCompare{
+	newUserAttribute := tokenAttributeCompare{
 		enabled:   tokenEnabled,
 		expiresAt: token.ExpiresAt,
 		username:  token.UserID,
 	}
-	old := tokenAttributeCompare{
+	oldUserAttribute := tokenAttributeCompare{
 		enabled:   clusterAuthToken.Enabled,
 		expiresAt: clusterAuthToken.ExpiresAt,
 		username:  clusterAuthToken.UserName,
 	}
-	if reflect.DeepEqual(new, old) {
+	if reflect.DeepEqual(newUserAttribute, oldUserAttribute) {
 		return nil, nil
 	}
 	clusterAuthToken.UserName = token.UserID
@@ -99,10 +92,7 @@ func (h *TokenHandler) Updated(token *managementv3.Token) (runtime.Object, error
 	return nil, err
 }
 
-func (h *TokenHandler) Remove(token *managementv3.Token) (runtime.Object, error) {
-	if token.ClusterName != h.clusterName {
-		return nil, nil
-	}
+func (h *tokenHandler) Remove(token *managementv3.Token) (runtime.Object, error) {
 
 	tokens, err := h.tokenIndexer.ByIndex(tokenByUserAndClusterIndex, tokenUserClusterKey(token))
 	if errors.IsNotFound(err) {
@@ -116,7 +106,7 @@ func (h *TokenHandler) Remove(token *managementv3.Token) (runtime.Object, error)
 		if token.Name == lastToken.Name {
 			// we are about to remove the last token for this user & cluster,
 			// also remove user data from cluster
-			err := h.clusterUserAttribute.Delete(token.UserID, &metav1.DeleteOptions{})
+			err = h.clusterUserAttribute.Delete(token.UserID, &metav1.DeleteOptions{})
 			if err != nil {
 				logrus.Error(err)
 			}
@@ -129,7 +119,7 @@ func (h *TokenHandler) Remove(token *managementv3.Token) (runtime.Object, error)
 	return nil, err
 }
 
-func (h *TokenHandler) updateClusterUserAttribute(token *managementv3.Token) error {
+func (h *tokenHandler) updateClusterUserAttribute(token *managementv3.Token) error {
 	userID := token.UserID
 	user, err := h.userLister.Get("", userID)
 	if err != nil {
@@ -141,7 +131,7 @@ func (h *TokenHandler) updateClusterUserAttribute(token *managementv3.Token) err
 		return err
 	}
 
-	groups := []string{}
+	var groups []string
 	for _, gp := range userAttribute.GroupPrincipals {
 		for i := range gp.Items {
 			groups = append(groups, gp.Items[i].Name)
@@ -171,20 +161,20 @@ func (h *TokenHandler) updateClusterUserAttribute(token *managementv3.Token) err
 		return err
 	}
 
-	new := userAttributeCompare{
+	newUserAttribute := userAttributeCompare{
 		groups:       groups,
 		lastRefresh:  userAttribute.LastRefresh,
 		needsRefresh: userAttribute.NeedsRefresh,
 		enabled:      userEnabled,
 	}
-	old := userAttributeCompare{
+	oldUserAttribute := userAttributeCompare{
 		groups:       clusterUserAttribute.Groups,
 		lastRefresh:  clusterUserAttribute.LastRefresh,
 		needsRefresh: clusterUserAttribute.NeedsRefresh,
 		enabled:      clusterUserAttribute.Enabled,
 	}
 
-	if reflect.DeepEqual(new, old) {
+	if reflect.DeepEqual(newUserAttribute, oldUserAttribute) {
 		return nil
 	}
 

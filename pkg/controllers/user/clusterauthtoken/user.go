@@ -8,17 +8,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-type UserHandler struct {
+type userHandler struct {
 	namespace                  string
 	clusterUserAttribute       clusterv3.ClusterUserAttributeInterface
 	clusterUserAttributeLister clusterv3.ClusterUserAttributeLister
 }
 
-func (h *UserHandler) Create(user *managementv3.User) (runtime.Object, error) {
+func (h *userHandler) Create(user *managementv3.User) (runtime.Object, error) {
 	return nil, nil
 }
 
-func (h *UserHandler) Updated(user *managementv3.User) (runtime.Object, error) {
+func (h *userHandler) Updated(user *managementv3.User) (runtime.Object, error) {
 	clusterUserAttribute, err := h.clusterUserAttributeLister.Get(h.namespace, user.Name)
 	if errors.IsNotFound(err) {
 		return nil, nil
@@ -37,7 +37,7 @@ func (h *UserHandler) Updated(user *managementv3.User) (runtime.Object, error) {
 	return nil, err
 }
 
-func (h *UserHandler) Remove(user *managementv3.User) (runtime.Object, error) {
+func (h *userHandler) Remove(user *managementv3.User) (runtime.Object, error) {
 	_, err := h.clusterUserAttributeLister.Get(h.namespace, user.Name)
 	if errors.IsNotFound(err) {
 		return nil, nil
