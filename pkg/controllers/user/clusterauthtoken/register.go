@@ -37,32 +37,40 @@ func Register(ctx context.Context, cluster *config.UserContext) {
 	userAttribute := cluster.Management.Management.UserAttributes("")
 	userAttributeLister := cluster.Management.Management.UserAttributes("").Controller().Lister()
 
-	cluster.Management.Management.Settings("").AddLifecycle(ctx, "cat-setting-controller", &SettingHandler{
-		namespace,
-		clusterConfigMap,
-		clusterConfigMapLister,
-	})
-	cluster.Management.Management.Tokens("").AddLifecycle(ctx, "cat-token-controller", &TokenHandler{
-		namespace,
+	cluster.Management.Management.Settings("").AddClusterScopedLifecycle(ctx, "cat-setting-controller",
 		clusterName,
-		clusterAuthToken,
-		clusterAuthTokenLister,
-		clusterUserAttribute,
-		clusterUserAttributeLister,
-		tokenIndexer,
-		userLister,
-		userAttributeLister,
-	})
-	cluster.Management.Management.Users("").AddLifecycle(ctx, "cat-user-controller", &UserHandler{
-		namespace,
-		clusterUserAttribute,
-		clusterUserAttributeLister,
-	})
+		&SettingHandler{
+			namespace,
+			clusterConfigMap,
+			clusterConfigMapLister,
+		})
+	cluster.Management.Management.Tokens("").AddClusterScopedLifecycle(ctx, "cat-token-controller",
+		clusterName,
+		&TokenHandler{
+			namespace,
+			clusterName,
+			clusterAuthToken,
+			clusterAuthTokenLister,
+			clusterUserAttribute,
+			clusterUserAttributeLister,
+			tokenIndexer,
+			userLister,
+			userAttributeLister,
+		})
+	cluster.Management.Management.Users("").AddClusterScopedLifecycle(ctx, "cat-user-controller",
+		clusterName,
+		&UserHandler{
+			namespace,
+			clusterUserAttribute,
+			clusterUserAttributeLister,
+		})
+
 	cluster.Management.Management.UserAttributes("").AddHandler(ctx, "cat-user-attribute-controller", (&UserAttributeHandler{
 		namespace,
 		clusterUserAttribute,
 		clusterUserAttributeLister,
 	}).Sync)
+
 	cluster.Cluster.ClusterUserAttributes(namespace).AddHandler(ctx, "cat-cluster-user-attribute-controller", (&ClusterUserAttributeHandler{
 		userAttribute,
 		userAttributeLister,
