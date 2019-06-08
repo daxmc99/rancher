@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/rancher/rancher/pkg/controllers/management/compose/common"
 	nodehelper "github.com/rancher/rancher/pkg/node"
+	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/rancher/pkg/systemaccount"
 	"github.com/rancher/types/apis/core/v1"
 	"github.com/rancher/types/apis/management.cattle.io/v3"
@@ -29,6 +32,7 @@ const (
 )
 
 var apiUpdateMap = map[string]string{apiUpdate: "true"}
+var f = metav1.DeletePropagationBackground
 
 type nodeSyncer struct {
 	machines         v3.NodeInterface
@@ -119,7 +123,8 @@ func (n *nodeSyncer) needUpdate(key string, node *corev1.Node) (bool, error) {
 	if existing == nil {
 		return true, nil
 	}
-	if existing.Annotations[annotationName] == "" {
+	selfHealing, err := strconv.ParseBool(settings.SelfHealingNodepools.Get())
+	if existing.Annotations[annotationName] == "" && selfHealing {
 		existing.Annotations[annotationName] = "true"
 		if _, err = n.nodesSyncer.machines.Update(existing); err != nil {
 			return false, err
@@ -288,10 +293,28 @@ func (m *nodesSyncer) removeNode(machine *v3.Node) error {
 	if _, ok := machine.Annotations[annotationName]; !ok {
 		return nil
 	}
-
-	err := m.machines.Delete(machine.ObjectMeta.Name, nil)
+	timeInt, err := strconv.Atoi(settings.NodeDeletionTimeout.Get())
 	if err != nil {
-		return errors.Wrapf(err, "Failed to delete machine [%s]", machine.Name)
+		return err
+	}
+	timeout := time.Duration(time.Duration(timeInt) * time.Second)
+	if timeout > time.Duration(0) {
+		go func() {
+			time.Sleep(timeout)
+			err = m.machines.DeleteNamespaced(machine.Namespace, machine.ObjectMeta.Name, &metav1.DeleteOptions{
+				PropagationPolicy: &f,
+			})
+			if err != nil {
+				logrus.Errorf("failed to delete machine [%s]", machine.ObjectMeta.Name)
+			}
+		}()
+		return nil
+	}
+	err = m.machines.DeleteNamespaced(machine.Namespace, machine.ObjectMeta.Name, &metav1.DeleteOptions{
+		PropagationPolicy: &f,
+	})
+	if err != nil {
+		return errors.Wrapf(err, "failed to delete machine [%s]", machine.Name)
 	}
 	logrus.Infof("Deleted cluster node %s [%s]", machine.Name, machine.Status.NodeName)
 	return nil
@@ -319,21 +342,26 @@ func (m *nodesSyncer) createNode(node *corev1.Node, pods map[string][]*corev1.Po
 	// try to get machine from api, in case cache didn't get the update
 	existing, err := m.getMachineForNode(node, false)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to get machine for node [%s]", node.Name)
 	}
 	if existing != nil {
 		return nil
 	}
 	machine, err := m.convertNodeToMachine(node, existing, pods)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to convert node to machine for node [%s]", node.Name)
 	}
 
 	if machine.Annotations == nil {
 		machine.Annotations = make(map[string]string)
 	}
-	machine.Annotations[annotationName] = "true"
-
+	selfHeal, err := strconv.ParseBool(settings.SelfHealingNodepools.Get())
+	if err != nil {
+		return errors.Wrapf(err, "failed to create machine for node [%s]", node.Name)
+	}
+	if selfHeal {
+		machine.Annotations[annotationName] = "true"
+	}
 	_, err = m.machines.Create(machine)
 	if err != nil {
 		return errors.Wrapf(err, "Failed to create machine for node [%s]", node.Name)

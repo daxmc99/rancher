@@ -3,14 +3,14 @@ package nodepool
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
 	"time"
 
-	"reflect"
-
 	"github.com/rancher/rancher/pkg/ref"
+	"github.com/rancher/rancher/pkg/settings"
 	"github.com/rancher/rke/services"
 	"github.com/rancher/types/apis/management.cattle.io/v3"
 	"github.com/rancher/types/config"
@@ -97,7 +97,7 @@ func (c *Controller) machineChanged(key string, machine *v3.Node) (runtime.Objec
 	return nil, nil
 }
 
-func (c *Controller) createNode(name string, nodePool *v3.NodePool, simulate bool) (*v3.Node, error) {
+func (c *Controller) createNode(name string, nodePool *v3.NodePool, simulate bool, delay time.Duration) (*v3.Node, error) {
 	newNode := &v3.Node{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "m-",
@@ -118,7 +118,10 @@ func (c *Controller) createNode(name string, nodePool *v3.NodePool, simulate boo
 	if simulate {
 		return newNode, nil
 	}
-
+	if delay > time.Duration(0) {
+		time.Sleep(delay)
+		return c.Nodes.Create(newNode)
+	}
 	return c.Nodes.Create(newNode)
 }
 
@@ -185,11 +188,23 @@ func (c *Controller) nodes(nodePool *v3.NodePool, simulate bool) ([]*v3.Node, er
 
 func (c *Controller) createOrCheckNodes(nodePool *v3.NodePool, simulate bool) (bool, error) {
 	var (
-		err     error
-		byName  = map[string]*v3.Node{}
-		changed = false
-		nodes   []*v3.Node
+		err             error
+		byName          = map[string]*v3.Node{}
+		changed         = false
+		nodes           []*v3.Node
+		creationGrace   = settings.NodeCreationGracePeriod.Get()
+		deletionTimeout = settings.NodeCreationGracePeriod.Get()
 	)
+	creationGraceInt, err := strconv.Atoi(creationGrace)
+	if err != nil {
+		return false, err
+	}
+	deletionTimeoutInt, err := strconv.Atoi(deletionTimeout)
+	if err != nil {
+		return false, err
+	}
+	creationTime := time.Duration(time.Duration(creationGraceInt) * time.Second)
+	deletionTime := time.Duration(time.Duration(deletionTimeoutInt) * time.Second)
 
 	allNodes, err := c.nodes(nodePool, simulate)
 	if err != nil {
@@ -233,7 +248,7 @@ func (c *Controller) createOrCheckNodes(nodePool *v3.NodePool, simulate bool) (b
 		}
 
 		changed = true
-		newNode, err := c.createNode(name, nodePool, simulate)
+		newNode, err := c.createNode(name, nodePool, simulate, creationTime)
 		if err != nil {
 			return false, err
 		}
@@ -251,7 +266,7 @@ func (c *Controller) createOrCheckNodes(nodePool *v3.NodePool, simulate bool) (b
 
 		changed = true
 		if !simulate {
-			c.deleteNode(toDelete, 0)
+			c.deleteNode(toDelete, deletionTime)
 		}
 
 		nodes = nodes[:len(nodes)-1]
