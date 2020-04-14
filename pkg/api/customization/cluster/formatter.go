@@ -104,7 +104,7 @@ func (f *Formatter) Formatter(request *types.APIContext, resource *types.RawReso
 		resource.AddAction(request, v3.ClusterActionViewMonitoring)
 	}
 
-	if gkeConfig, ok := resource.Values["googleKubernetesEngineConfig"]; ok {
+	if gkeConfig, ok := resource.Values["googleKubernetesEngineConfig"]; ok && gkeConfig != nil {
 		configMap, ok := gkeConfig.(map[string]interface{})
 		if !ok {
 			logrus.Errorf("could not convert gke config to map")
@@ -118,7 +118,7 @@ func (f *Formatter) Formatter(request *types.APIContext, resource *types.RawReso
 		setTrueIfNil(configMap, "enableNetworkPolicyConfig")
 	}
 
-	if eksConfig, ok := resource.Values["amazonElasticContainerServiceConfig"]; ok {
+	if eksConfig, ok := resource.Values["amazonElasticContainerServiceConfig"]; ok && eksConfig != nil {
 		configMap, ok := eksConfig.(map[string]interface{})
 		if !ok {
 			logrus.Errorf("could not convert eks config to map")
