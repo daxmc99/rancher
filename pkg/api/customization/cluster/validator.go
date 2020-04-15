@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rancher/kontainer-engine/service"
 	"github.com/rancher/norman/api/access"
 	"github.com/rancher/norman/httperror"
 	"github.com/rancher/norman/types"
@@ -19,6 +20,7 @@ import (
 	mgmtSchema "github.com/rancher/types/apis/management.cattle.io/v3/schema"
 	mgmtclient "github.com/rancher/types/client/management/v3"
 	"github.com/robfig/cron"
+	"k8s.io/apimachinery/pkg/api/errors"
 )
 
 type Validator struct {
@@ -54,6 +56,10 @@ func (v *Validator) Validator(request *types.APIContext, schema *types.Schema, d
 	}
 
 	if err := v.validateScheduledClusterScan(&spec); err != nil {
+		return err
+	}
+
+	if err := v.validateGenericEngineConfig(request, &spec); err != nil {
 		return err
 	}
 	return nil
@@ -269,4 +275,80 @@ func (v *Validator) accessTemplate(request *types.APIContext, spec *mgmtclient.C
 	}
 
 	return nil
+}
+
+// validateGenericEngineConfig allows for additional validation of clusters that depend on Kontainer Engine or Rancher Machine driver
+func (v *Validator) validateGenericEngineConfig(request *types.APIContext, spec *v3.ClusterSpec) error {
+
+	if request.Method == http.MethodPost {
+		return nil
+	}
+
+	clusterName := request.ID
+	fmt.Printf("%v", time.Now())
+	fmt.Printf("%v", spec.AmazonElasticContainerServiceConfig)
+
+	// eks specific logic
+	prevCluster, err := v.ClusterLister.Get("", clusterName)
+	if err != nil {
+		if errors.IsNotFound(err) { //nothing to do, cluster is being created
+			return nil
+		}
+		return err
+	}
+	if spec.AmazonElasticContainerServiceConfig != nil {
+		err := validateEKS(*prevCluster.Spec.GenericEngineConfig, *spec.AmazonElasticContainerServiceConfig)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+
+}
+
+func validateEKS(prevCluster, newCluster map[string]interface{}) error {
+	// check config is for EKS clusters
+	if driver, ok := prevCluster["driverName"]; ok {
+		if driver != service.AmazonElasticContainerServiceDriverName {
+			return nil
+		}
+	}
+
+	// don't allow for updating subnets
+	if prev, ok := prevCluster["subnets"]; ok {
+		if new, ok := newCluster["subnets"]; ok {
+			prevSlice, ok := prev.([]interface{})
+			if !ok {
+				return fmt.Errorf("unable to convert subnets to interace slice")
+			}
+			newSlice, ok := new.([]interface{})
+			if !ok {
+				return fmt.Errorf("unable to convert subnets to interface slice")
+			}
+
+			if !testEq(prevSlice, newSlice) {
+				return fmt.Errorf("cannot modify EKS subnets after creation")
+			}
+		}
+	}
+	return nil
+}
+
+func testEq(a, b []interface{}) bool {
+	// If one is nil, the other must also be nil.
+	if (a == nil) != (b == nil) {
+		return false
+	}
+
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
